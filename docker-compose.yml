@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # ------------------------------------
+  # 1. Serviço PostgreSQL (Banco de Dados)
+  # ------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      # Credenciais padrões
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # CRÍTICO: Nova variável para criar o banco de dados da Evolution
+      - POSTGRES_MULTIPLE_DATABASES=${POSTGRES_MULTIPLE_DATABASES} 
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n_network
+
+  # ------------------------------------
+  # 2. Serviço Redis (Fila e Cache)
+  # ------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: always
+    networks:
+      - n8n_network
+
+  # ------------------------------------
+  # 3. Serviço Principal do n8n (Web UI e Worker Principal)
+  # ------------------------------------
+  n8n:
+    image: n8nio/n8n
+    restart: always
+    environment:
+      # ... (Variáveis do n8n que apontam para DB_POSTGRESDB_DATABASE=n8n)
+      - N8N_HOST=${N8N_HOST}
+      # ...
+    ports:
+      - "${N8N_PORT}:5678"
+    volumes:
+      - ${DATA_FOLDER}:/home/node/.n8n
+    networks:
+      - n8n_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ------------------------------------
+  # 4. Serviço Worker do n8n (Para processamento em segundo plano)
+  # ------------------------------------
+  n8n-worker:
+    image: n8nio/n8n
+    restart: always
+    environment:
+      # ... (Variáveis do n8n-worker)
+      - N8N_EXECUTION_PROCESS=worker
+    volumes:
+      - ${DATA_FOLDER}:/home/node/.n8n
+    networks:
+      - n8n_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      n8n:
+        condition: service_started
+
+  # ------------------------------------
+  # 5. Serviço: Evolution API
+  # ------------------------------------
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution_api
+    restart: always
+    ports:
+      - "${EVO_API_PORT}:8080" 
+    env_file:
+      - .env
+    environment:
+      # Variáveis de configuração e segurança
+      - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
+      - SERVER_URL=${SERVER_URL}
+      - CONFIG_SESSION_PHONE_CLIENT=${CONFIG_SESSION_PHONE_CLIENT}
+      - GROUPS_IGNORE=${GROUPS_IGNORE}
+      - REJECT_CALL=${REJECT_CALL}
+      - MSG_CALL=${MSG_CALL}
+      # Configuração do banco de dados (Aponta para o novo DB)
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB_EVO} 
+      # Configuração do Redis (compartilhado)
+      - REDIS_ENABLED=true
+      - REDIS_URI=redis://redis:6379/1
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - n8n_network
+
+# ------------------------------------
+# Definição de volumes e rede (NÍVEL RAIZ)
+# ------------------------------------
+volumes:
+  # Volumes do N8N
+  postgres_data:
+  # Volumes da Evolution API
+  evolution_instances:
+  evolution_store:
+
+networks:
+  n8n_network:
+    driver: bridge
