@@ -112,31 +112,6 @@ services:
         condition: service_started
     networks:
       - n8n_network
-      # ------------------------------------
-      # 6. Serviço Ngrok (Exposição Externa do n8n)
-      # ------------------------------------
-  ngrok:
-    image: ngrok/ngrok
-    container_name: ngrok
-    restart: unless-stopped
-    environment:
-      # 1. Seu token de autenticação (CRÍTICO)
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command:
-      # 2. Comando para criar o túnel HTTP
-      # ngrok vai se conectar ao serviço 'n8n' na porta 5678 (http://n8n:5678)
-      - "http"
-      - "n8n:5678"
-      - "--domain=${NGROK_DOMAIN}"
-      # O --domain é necessário para o n8n funcionar corretamente com subdomínios gratuitos
-    networks:
-      # CRÍTICO: Deve estar na mesma rede do n8n para acessá-lo
-      - n8n_network
-    depends_on:
-      # Depende do n8n para garantir que o serviço que ele vai expor esteja rodando
-      n8n:
-        condition: service_started
-
 # ------------------------------------
 # Definição de volumes e rede (NÍVEL RAIZ)
 # ------------------------------------
