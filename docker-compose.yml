@@ -13,7 +13,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       # CRÍTICO: Nova variável para criar o banco de dados da Evolution
-      - POSTGRES_MULTIPLE_DATABASES=${POSTGRES_MULTIPLE_DATABASES} 
+      - POSTGRES_MULTIPLE_DATABASES=${POSTGRES_MULTIPLE_DATABASES}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -84,7 +84,7 @@ services:
     container_name: evolution_api
     restart: always
     ports:
-      - "${EVO_API_PORT}:8080" 
+      - "${EVO_API_PORT}:8080"
     env_file:
       - .env
     environment:
@@ -98,7 +98,7 @@ services:
       # Configuração do banco de dados (Aponta para o novo DB)
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB_EVO} 
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB_EVO}
       # Configuração do Redis (compartilhado)
       - REDIS_ENABLED=true
       - REDIS_URI=redis://redis:6379/1
@@ -112,14 +112,38 @@ services:
         condition: service_started
     networks:
       - n8n_network
+      # ------------------------------------
+      # 6. Serviço Ngrok (Exposição Externa do n8n)
+      # ------------------------------------
+  ngrok:
+    image: ngrok/ngrok
+    container_name: ngrok
+    restart: unless-stopped
+    environment:
+      # 1. Seu token de autenticação (CRÍTICO)
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command:
+      # 2. Comando para criar o túnel HTTP
+      # ngrok vai se conectar ao serviço 'n8n' na porta 5678 (http://n8n:5678)
+      - "http"
+      - "n8n:5678"
+      - "--domain=${NGROK_DOMAIN}"
+      # O --domain é necessário para o n8n funcionar corretamente com subdomínios gratuitos
+    networks:
+      # CRÍTICO: Deve estar na mesma rede do n8n para acessá-lo
+      - n8n_network
+    depends_on:
+      # Depende do n8n para garantir que o serviço que ele vai expor esteja rodando
+      n8n:
+        condition: service_started
 
 # ------------------------------------
 # Definição de volumes e rede (NÍVEL RAIZ)
 # ------------------------------------
 volumes:
   # Volumes do N8N
-  postgres_data:
-  # Volumes da Evolution API
+  postgres_data: # Volumes da Evolution API
+
   evolution_instances:
   evolution_store:
 
